@@ -8,19 +8,46 @@ datasource db {
 }
 
 model User {
-  id       Int    @id @default(autoincrement())
-  email    String
+  id       Int      @id @default(autoincrement())
+  name     String
   password String
+  Outfit   Outfit[]
 }
 
-model Currency {
-  id   Int    @id @default(autoincrement())
-  name String
+model Character {
+  id     Int      @id @default(autoincrement())
+  name   String
+  Outfit Outfit[]
 }
 
-model Holding {
-  id         Int @id @default(autoincrement())
-  userId     Int
-  currencyId Int
-  amount     Int
+model Top {
+  id     Int      @id @default(autoincrement())
+  name   String
+  Outfit Outfit[]
+}
+
+model Bottom {
+  id     Int      @id @default(autoincrement())
+  name   String
+  Outfit Outfit[]
+}
+
+model Shoe {
+  id     Int      @id @default(autoincrement())
+  name   String
+  Outfit Outfit[]
+}
+
+model Outfit {
+  id           Int       @id @default(autoincrement())
+  user         User      @relation(fields: [user_id], references: [id])
+  user_id      Int
+  character    Character @relation(fields: [character_id], references: [id])
+  character_id Int
+  top          Top       @relation(fields: [top_id], references: [id])
+  top_id       Int
+  bottom       Bottom    @relation(fields: [bottom_id], references: [id])
+  bottom_id    Int
+  shoe         Shoe      @relation(fields: [shoe_id], references: [id])
+  shoe_id      Int
 }

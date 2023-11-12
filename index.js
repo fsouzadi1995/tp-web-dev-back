@@ -1,232 +1,211 @@
-const express = require('express');
+import express from 'express';
+import bcrypt from 'bcrypt';
+import { PrismaClient } from '@prisma/client';
+
+import { signUser } from './utils';
+import { withJwt } from './auth';
+
 const app = express();
-const PrismaClient = require('@prisma/client').PrismaClient;
 
 const prismaClient = new PrismaClient();
 
 app.use(express.json());
 
-app.get('/api/currency', async (req, res) => {
-  try {
-    res.send(await prismaClient.currency.findMany());
-  } catch (err) {
-    res.status(500).send();
-  }
-});
+// app.post('/api/signup', async (req, res) => {
+//   const name = req.query.name?.toLocaleLowerCase();
+//   const password = +req.query.pwd;
 
-app.get('/api/currency/:currencyId', async (req, res) => {
-  const currencyId = +req.params.currencyId;
-  try {
-    if (isNan(currencyId)) {
-      return res.status(400).send();
-    }
+//   try {
+//     if (!name) {
+//       return res.status(400).send('name field cannot be empty');
+//     }
 
-    const resource = await prismaClient.currency.findFirst({
-      where: { id: +currencyId },
-    });
+//     const nameExists = await prismaClient.user.findFirst({
+//       where: { name },
+//     });
 
-    if (!resource) {
-      res.status(404).send();
-    }
+//     if (nameExists) {
+//       return res.status(400).send('name already taken');
+//     }
 
-    res.status(200).send(resource);
-  } catch (err) {
-    res.status(500).send();
-  }
-});
+//     if (password.toString().length < 4) {
+//       return res.status(400).send('password must be at least 4 characters');
+//     }
 
-app.post('/api/currency', async (req, res) => {
-  const { name } = req.body;
+//     if (password.toString().length > 16) {
+//       return res.status(400).send('password cannot exceed 16 characters');
+//     }
 
-  if (!name) {
-    res.status(400).send();
-  }
+//     if (isNaN(password)) {
+//       return res.status(400).send('not a number');
+//     }
 
-  try {
-    const resource = await prismaClient.currency.create({ data: { name } });
+//     bcrypt.hash(password.toString(), 8).then(async (hashed_pw) => {
+//       await prismaClient.user.create({
+//         data: { name, password: hashed_pw },
+//       });
+//     });
 
-    res.status(200).json(resource);
-  } catch (err) {
-    res.status(500).send();
-  }
-});
+//     res.status(200).send();
+//   } catch (ex) {
+//     console.log(ex);
+//     return res.status(500).send();
+//   }
+// });
 
-app.patch('/api/currency/:currencyId', async (req, res) => {
-  const { currencyId } = req.params;
+app.post('/api/signin', async (req, res) => {
+  const name = req.query.name;
+  const password = +req.query.pwd;
 
   try {
-    const currency = await prismaClient.currency.findFirst({
-      where: { id: +currencyId },
-    });
-
-    if (!currency) {
-      res.status(404).send();
+    if (!name) {
+      return res.status(400).send('name field cannot be empty');
     }
 
-    const data = req.body;
-
-    const resource = await prismaClient.currency.update({
-      where: { id: +currencyId },
-      data,
-    });
-
-    res.status(200).json(resource);
-  } catch (ex) {
-    console.log(ex);
-    res.status(500).send();
-  }
-});
-
-app.delete('/api/currency/:currencyId', async (req, res) => {
-  const { currencyId } = req.params;
-
-  try {
-    await prismaClient.currency.delete({
-      where: { id: +currencyId },
-    });
-
-    res.status(200).send();
-  } catch (ex) {
-    console.log(ex);
-    res.status(500).send();
-  }
-});
-
-app.post('/api/user/:userId/buy_currency/:currencyId', async (req, res) => {
-  const { amount } = req.body;
-  const userId = +req.params.userId;
-  const currencyId = +req.params.currencyId;
-
-  try {
-    const currency = await prismaClient.currency.findFirst({
-      where: { id: currencyId },
-    });
-
-    if (!currency) {
-      return res.status(404).send();
+    if (isNaN(password)) {
+      return res.status(400).send('password is not a number');
     }
 
-    const ars_holding = await prismaClient.holding.findFirst({
-      where: { currencyId: 1, userId },
-    });
-
-    if (!ars_holding) {
-      return res.status(403).send('not enough funds');
+    if (password.toString().length < 4) {
+      return res.status(400).send('password must be at least 4 characters');
     }
 
-    if (amount > ars_holding.amount) {
-      return res.status(403).send('not enough funds');
+    if (password.toString().length > 16) {
+      return res.status(400).send('password cannot exceed 16 characters');
     }
 
-    await prismaClient.holding.update({
-      where: { id: ars_holding.id },
-      data: { amount: ars_holding.amount - amount },
-    });
+    const db_user = await prismaClient.user.findFirst({ where: { name } });
 
-    const currency_holding = await prismaClient.holding.findFirst({
-      where: { currencyId, userId },
-    });
+    if (!db_user) {
+      return res.status(400).send('user not found');
+    }
 
-    if (!currency_holding) {
-      await prismaClient.holding.create({
-        data: { currencyId, userId, amount },
+    return bcrypt
+      .compare(password.toString(), db_user.password)
+      .then((result) => {
+        if (!result) {
+          return res.status(400).send('Invalid password');
+        }
+
+        res.setHeader('X-Bearer', signUser(db_user.id));
+
+        return res.status(200).send();
       });
-    } else {
-      await prismaClient.holding.update({
-        where: { id: currency_holding.id },
-        data: { amount: currency_holding.amount + amount },
-      });
-    }
-
-    res.status(200).send();
   } catch (ex) {
     console.log(ex);
     return res.status(500).send();
   }
 });
 
-app.post(
-  '/api/transfer/:currencyId/from/:fromUserId/to/:toUserId',
-  async (req, res) => {
-    const fromUserId = +req.params.fromUserId;
-    const toUserId = +req.params.toUserId;
-    const currencyId = +req.params.currencyId;
-    const amount = +req.body.amount;
+app.post('/api/outfit', withJwt, async (req, res) => {
+  const { character, top, bottom, shoe } = req.body;
+  const { id: user_id } = req.jwt_payload;
 
-    try {
-      if (fromUserId === toUserId) {
-        return res.status(400).send('identical ids');
-      }
-
-      if (isNaN(amount)) {
-        return res.status(400).send('not a number');
-      }
-
-      if (amount <= 0) {
-        return res.status(400).send('amount has to be a positive integer');
-      }
-
-      const currency = await prismaClient.currency.findFirst({
-        where: { id: currencyId },
-      });
-
-      if (!currency) {
-        return res.status(404).send();
-      }
-
-      const fromUser = await prismaClient.user.findFirst({
-        where: { id: fromUserId },
-      });
-
-      const toUser = await prismaClient.user.findFirst({
-        where: { id: toUserId },
-      });
-
-      if (!fromUser || !toUser) {
-        return res.status(404).send();
-      }
-
-      const fromUserHolding = await prismaClient.holding.findFirst({
-        where: { userId: fromUserId, currencyId },
-      });
-
-      if (!fromUserHolding) {
-        return res.status(403).send();
-      }
-
-      if (amount > fromUserHolding.amount) {
-        return res.status(403).send();
-      }
-
-      await prismaClient.holding.update({
-        where: { id: fromUserHolding.id },
-        data: { amount: fromUserHolding.amount - amount },
-      });
-
-      const toUserHolding = await prismaClient.holding.findFirst({
-        where: { userId: toUserId, currencyId },
-      });
-
-      if (!toUserHolding) {
-        await prismaClient.holding.create({
-          data: { userId: toUserId, currencyId, amount },
-        });
-      } else {
-        await prismaClient.holding.update({
-          where: { id: toUserHolding.id },
-          data: { amount: toUserHolding.amount + amount },
-        });
-      }
-
-      res.status(200).send();
-    } catch (ex) {
-      console.log(ex);
-      return res.status(500).send();
+  try {
+    if (!character || !top || !bottom || !shoe) {
+      return res.status(400).send('Malformed outfit');
     }
-  }
-);
 
-app.get('/ping', (req, res) => res.send('pong'));
+    const db_user = await prismaClient.user.findFirstOrThrow({
+      where: { id: user_id },
+    });
+
+    const db_character = await prismaClient.character.findUniqueOrThrow({
+      where: { name: { equals: character } },
+    });
+
+    const db_top = await prismaClient.top.findUniqueOrThrow({
+      where: { name: { equals: top } },
+    });
+
+    const db_bottom = await prismaClient.bottom.findUniqueOrThrow({
+      where: { name: { equals: bottom } },
+    });
+
+    const db_shoe = await prismaClient.shoe.findUniqueOrThrow({
+      where: { name: { equals: shoe } },
+    });
+
+    const outfit = await prismaClient.outfit.create({
+      data: {
+        user_id: db_user.id,
+        character_id: db_character.id,
+        top_id: db_top.id,
+        bottom_id: db_bottom.id,
+        shoe_id: db_shoe.id,
+      },
+    });
+
+    if (!outfit) {
+      return res.status(400).send();
+    }
+
+    return res.status(200).json(outfit);
+  } catch (ex) {
+    console.log(ex);
+    return res.status(400).send();
+  }
+});
+
+app.get('/api/outfit/history', async (req, res) => {
+  try {
+    const outfits = await prismaClient.outfit.findMany({
+      take: 5,
+      orderBy: { id: 'desc' },
+    });
+
+    return res.status(200).json(outfits);
+  } catch (ex) {
+    console.log(ex);
+    return res.status(500).send();
+  }
+});
+
+app.get('/api/outfit/history/:user_id', withJwt, async (req, res) => {
+  const name = req.query.name;
+  const password = +req.query.pwd;
+
+  try {
+    if (!name) {
+      return res.status(400).send('name field cannot be empty');
+    }
+
+    if (isNaN(password)) {
+      return res.status(400).send('password is not a number');
+    }
+
+    if (password.toString().length < 4) {
+      return res.status(400).send('password must be at least 4 characters');
+    }
+
+    if (password.toString().length > 16) {
+      return res.status(400).send('password cannot exceed 16 characters');
+    }
+
+    const db_user = await prismaClient.user.findFirst({ where: { name } });
+
+    if (!db_user) {
+      return res.status(400).send('user not found');
+    }
+
+    return bcrypt
+      .compare(password.toString(), db_user.password)
+      .then((result) => {
+        if (!result) {
+          return res.status(400).send('invalid password');
+        }
+
+        res.setHeader('X-Bearer', signUser(db_user.id));
+
+        return res.status(200).send();
+      });
+  } catch (ex) {
+    console.log(ex);
+    return res.status(500).send();
+  }
+});
+
+app.get('/api/ping', (_, res) => res.send('pong'));
 
 app.listen(3000, () => {
   console.log(`Listening on port 3000`);
