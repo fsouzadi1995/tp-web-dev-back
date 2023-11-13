@@ -18,7 +18,7 @@ Error code: 400
 
 Method: POST
 
-Desc: Guarda un outfit en particular para un usuario determinado
+Desc: Persiste un outfit en particular para un usuario determinado
 
 Error code: 400
 
