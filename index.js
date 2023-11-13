@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import bcrypt from 'bcrypt';
 import { PrismaClient } from '@prisma/client';
 
@@ -10,6 +11,7 @@ const app = express();
 const prismaClient = new PrismaClient();
 
 app.use(express.json());
+app.use(cors());
 
 // app.post('/api/signup', async (req, res) => {
 //   const name = req.query.name?.toLocaleLowerCase();
@@ -54,8 +56,12 @@ app.use(express.json());
 // });
 
 app.post('/api/signin', async (req, res) => {
-  const name = req.query.name;
-  const password = +req.query.pwd;
+  console.log(req.body);
+
+  const name = req.body.name;
+  const password = +req.body.password;
+
+  console.log({ name, password });
 
   try {
     if (!name) {
@@ -87,9 +93,7 @@ app.post('/api/signin', async (req, res) => {
           return res.status(400).send('Invalid password');
         }
 
-        res.setHeader('X-Bearer', signUser(db_user.id));
-
-        return res.status(200).send();
+        return res.status(200).json({ jwt: signUser(db_user.id) });
       });
   } catch (ex) {
     console.log(ex);
@@ -101,28 +105,30 @@ app.post('/api/outfit', withJwt, async (req, res) => {
   const { character, top, bottom, shoe } = req.body;
   const { id: user_id } = req.jwt_payload;
 
+  console.log(req.body);
+
   try {
     if (!character || !top || !bottom || !shoe) {
-      return res.status(400).send('Malformed outfit');
+      return res.status(400).send('malformed outfit');
     }
 
     const db_user = await prismaClient.user.findFirstOrThrow({
       where: { id: user_id },
     });
 
-    const db_character = await prismaClient.character.findUniqueOrThrow({
+    const db_character = await prismaClient.character.findFirstOrThrow({
       where: { name: { equals: character } },
     });
 
-    const db_top = await prismaClient.top.findUniqueOrThrow({
+    const db_top = await prismaClient.top.findFirstOrThrow({
       where: { name: { equals: top } },
     });
 
-    const db_bottom = await prismaClient.bottom.findUniqueOrThrow({
+    const db_bottom = await prismaClient.bottom.findFirstOrThrow({
       where: { name: { equals: bottom } },
     });
 
-    const db_shoe = await prismaClient.shoe.findUniqueOrThrow({
+    const db_shoe = await prismaClient.shoe.findFirstOrThrow({
       where: { name: { equals: shoe } },
     });
 
@@ -152,6 +158,14 @@ app.get('/api/outfit/history', async (req, res) => {
     const outfits = await prismaClient.outfit.findMany({
       take: 5,
       orderBy: { id: 'desc' },
+      select: {
+        id: true,
+        user: { select: { id: true } },
+        character: { select: { name: true } },
+        bottom: { select: { name: true } },
+        top: { select: { name: true } },
+        shoe: { select: { name: true } },
+      },
     });
 
     return res.status(200).json(outfits);
@@ -161,44 +175,26 @@ app.get('/api/outfit/history', async (req, res) => {
   }
 });
 
-app.get('/api/outfit/history/:user_id', withJwt, async (req, res) => {
-  const name = req.query.name;
-  const password = +req.query.pwd;
+app.get('/api/outfit/private_history', withJwt, async (req, res) => {
+  const { id: user_id } = req.jwt_payload;
 
   try {
-    if (!name) {
-      return res.status(400).send('name field cannot be empty');
-    }
+    const outfits = await prismaClient.outfit.findMany({
+      where: { user_id: { equals: user_id } },
+      orderBy: { id: 'desc' },
+      select: {
+        id: true,
+        user: { select: { id: true } },
+        character: { select: { name: true } },
+        bottom: { select: { name: true } },
+        top: { select: { name: true } },
+        shoe: { select: { name: true } },
+      },
+    });
 
-    if (isNaN(password)) {
-      return res.status(400).send('password is not a number');
-    }
+    console.log(outfits);
 
-    if (password.toString().length < 4) {
-      return res.status(400).send('password must be at least 4 characters');
-    }
-
-    if (password.toString().length > 16) {
-      return res.status(400).send('password cannot exceed 16 characters');
-    }
-
-    const db_user = await prismaClient.user.findFirst({ where: { name } });
-
-    if (!db_user) {
-      return res.status(400).send('user not found');
-    }
-
-    return bcrypt
-      .compare(password.toString(), db_user.password)
-      .then((result) => {
-        if (!result) {
-          return res.status(400).send('invalid password');
-        }
-
-        res.setHeader('X-Bearer', signUser(db_user.id));
-
-        return res.status(200).send();
-      });
+    return res.status(200).json(outfits);
   } catch (ex) {
     console.log(ex);
     return res.status(500).send();

@@ -30,7 +30,7 @@ Desc: Obtiene una lista de los últimos 5 outfits creados
 
 Error code: 500
 
-4. `/api/outfit/history/:user_id`
+4. `/api/outfit/private_history`
 
 Method: GET
 

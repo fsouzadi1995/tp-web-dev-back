@@ -4,14 +4,21 @@ const prisma = new PrismaClient();
 
 async function main() {
   bcrypt.hash('1234'.toString(), 8).then(async (password) => {
-    const baseUser = await prisma.user.create({
+    await prisma.user.create({
       data: {
         password,
         name: 'fabian',
       },
     });
+  });
 
-    console.log({ baseUser });
+  bcrypt.hash('1234'.toString(), 8).then(async (password) => {
+    await prisma.user.create({
+      data: {
+        password,
+        name: 'sebastian',
+      },
+    });
   });
 
   const qty = Array.from({ length: 3 }, (_, v) => v + 1);
@@ -39,17 +46,21 @@ async function main() {
   await prisma.character.createMany({
     data: [
       {
-        name: 'characterA',
+        name: 'charactera',
       },
       {
-        name: 'characterB',
+        name: 'characterb',
       },
       {
-        name: 'characterC',
+        name: 'characterc',
+      },
+      {
+        name: 'characterd',
       },
     ],
   });
 }
+
 main()
   .then(async () => {
     await prisma.$disconnect();
